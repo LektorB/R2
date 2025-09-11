@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interaktiv Enhetssirkel og Sin/Cos Grafer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            overflow: hidden; /* Forhindrer scrollbars pga. layout */
+        }
+        .canvas-container {
+            border: 1px solid #d1d5db; /* gray-300 */
+            border-radius: 0.5rem; /* rounded-lg */
+            background-color: #f9fafb; /* gray-50 */
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-6xl">
+        <h1 class="text-2xl md:text-3xl font-bold text-center mb-4">Sammenhengen mellom Enhetssirkelen og Sinus/Cosinus</h1>
+        <p class="text-center text-gray-600 mb-6">Bruk slideren for å endre vinkelen, eller trykk Play for å se animasjonen.</p>
+        
+        <!-- Hovedlayout med grid for å plassere elementene -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-center">
+            
+            <!-- Venstre kolonne: Enhetssirkelen -->
+            <div class="flex flex-col items-center">
+                <h2 class="text-xl font-semibold mb-2">Enhetssirkelen</h2>
+                <div class="canvas-container">
+                    <canvas id="unitCircleCanvas" width="400" height="400"></canvas>
+                </div>
+            </div>
+
+            <!-- Høyre kolonne: Grafene -->
+            <div class="flex flex-col items-center">
+                <h2 class="text-xl font-semibold mb-2">Grafer</h2>
+                <div class="canvas-container">
+                    <canvas id="graphCanvas" width="400" height="400"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Kontrollpanel under layouten -->
+        <div class="mt-8 p-4 bg-white rounded-lg shadow-md w-full max-w-3xl mx-auto flex flex-col items-center space-y-4">
+            <div class="w-full flex items-center justify-center space-x-4">
+                <button id="playPauseBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg w-24">Play</button>
+                <input id="angleSlider" type="range" min="0" max="360" value="0" step="0.5" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+            </div>
+            <div class="text-lg font-mono">
+                Vinkel: <span id="angleDisplay" class="font-bold text-blue-600">0.0°</span>
+                <span class="mx-2 text-gray-300">|</span>
+                cos(<span id="angleDisplayCos" class="text-red-500">θ</span>) = <span id="cosValue" class="font-bold text-red-500">1.00</span>
+                <span class="mx-2 text-gray-300">|</span>
+                sin(<span id="angleDisplaySin" class="text-green-500">θ</span>) = <span id="sinValue" class="font-bold text-green-500">0.00</span>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- Hent referanser til HTML-elementer ---
+        const circleCanvas = document.getElementById('unitCircleCanvas');
+        const graphCanvas = document.getElementById('graphCanvas');
+        const circleCtx = circleCanvas.getContext('2d');
+        const graphCtx = graphCanvas.getContext('2d');
+        const slider = document.getElementById('angleSlider');
+        const angleDisplay = document.getElementById('angleDisplay');
+        const angleDisplayCos = document.getElementById('angleDisplayCos');
+        const angleDisplaySin = document.getElementById('angleDisplaySin');
+        const cosValue = document.getElementById('cosValue');
+        const sinValue = document.getElementById('sinValue');
+        const playPauseBtn = document.getElementById('playPauseBtn');
+
+        // --- Konstanter og variabler ---
+        const circleRadius = 150;
+        const graphAmplitude = 150;
+        const circleCenter = { x: circleCanvas.width / 2, y: circleCanvas.height / 2 };
+        const graphOrigin = { x: 50, y: graphCanvas.height / 2 };
+        let angle = 0; // Vinkel i radianer
+        let isPlaying = false;
+        let animationFrameId;
+
+        const COLOR_COS = '#ef4444'; // red-500
+        const COLOR_SIN = '#22c55e'; // green-500
+        const COLOR_GUIDE = '#9ca3af'; // gray-400
+        const COLOR_AXIS = '#6b7280'; // gray-500
+        
+        // --- Hovedfunksjon for å tegne alt ---
+        function drawAll() {
+            // Konverter vinkel fra radianer til grader for slider og visning
+            const angleDeg = angle * (180 / Math.PI);
+            
+            // Oppdater UI-elementer
+            slider.value = angleDeg % 360;
+            angleDisplay.textContent = `${(angleDeg % 360).toFixed(1)}°`;
+            angleDisplayCos.textContent = `θ`;
+            angleDisplaySin.textContent = `θ`;
+
+            const cosVal = Math.cos(angle);
+            const sinVal = Math.sin(angle);
+            cosValue.textContent = cosVal.toFixed(2);
+            sinValue.textContent = sinVal.toFixed(2);
+
+            // Tøm og tegn begge canvas
+            clearCanvas();
+            drawUnitCircle(cosVal, sinVal);
+            drawGraph(cosVal, sinVal);
+        }
+
+        function clearCanvas() {
+            circleCtx.clearRect(0, 0, circleCanvas.width, circleCanvas.height);
+            graphCtx.clearRect(0, 0, graphCanvas.width, graphCanvas.height);
+        }
+
+        // --- Tegnefunksjoner for enhetssirkelen ---
+        function drawUnitCircle(cosVal, sinVal) {
+            circleCtx.save();
+            circleCtx.translate(circleCenter.x, circleCenter.y);
+
+            // Tegn akser
+            drawAxes(circleCtx, circleCanvas.width, circleCanvas.height, true);
+
+            // Tegn selve sirkelen
+            circleCtx.beginPath();
+            circleCtx.arc(0, 0, circleRadius, 0, 2 * Math.PI);
+            circleCtx.strokeStyle = '#cbd5e1'; // slate-300
+            circleCtx.lineWidth = 2;
+            circleCtx.stroke();
+            
+            // Punktet på sirkelen
+            const pointX = cosVal * circleRadius;
+            const pointY = -sinVal * circleRadius; // Negativ pga. canvas y-akse
+
+            // Radius-linje
+            circleCtx.beginPath();
+            circleCtx.moveTo(0, 0);
+            circleCtx.lineTo(pointX, pointY);
+            circleCtx.strokeStyle = COLOR_AXIS;
+            circleCtx.stroke();
+
+            // Vinkelbue
+            circleCtx.beginPath();
+            circleCtx.arc(0, 0, 20, 0, -angle, true);
+            circleCtx.strokeStyle = '#3b82f6'; // blue-500
+            circleCtx.stroke();
+            
+            // Hjelpelinjer og verdier (sin og cos)
+            // Cosinus (x-verdi)
+            circleCtx.beginPath();
+            circleCtx.moveTo(pointX, pointY);
+            circleCtx.lineTo(pointX, 0);
+            circleCtx.strokeStyle = COLOR_SIN;
+            circleCtx.lineWidth = 2.5;
+            circleCtx.stroke();
+            
+            // Sinus (y-verdi)
+            circleCtx.beginPath();
+            circleCtx.moveTo(pointX, pointY);
+            circleCtx.lineTo(0, pointY);
+            circleCtx.strokeStyle = COLOR_COS;
+            circleCtx.lineWidth = 2.5;
+            circleCtx.stroke();
+
+            // Tegn selve punktet
+            circleCtx.beginPath();
+            circleCtx.arc(pointX, pointY, 6, 0, 2 * Math.PI);
+            circleCtx.fillStyle = '#3b82f6'; // blue-500
+            circleCtx.fill();
+
+            circleCtx.restore();
+        }
+
+        // --- Tegnefunksjoner for grafene ---
+        function drawGraph(cosVal, sinVal) {
+            graphCtx.save();
+            graphCtx.translate(graphOrigin.x, graphOrigin.y);
+
+            // Tegn akser
+            drawAxes(graphCtx, graphCanvas.width - graphOrigin.x, graphCanvas.height, false);
+
+            const graphWidth = graphCanvas.width - graphOrigin.x - 20;
+
+            // Tegn hele sinus- og cosinus-kurvene
+            drawCurve(graphCtx, Math.sin, COLOR_SIN, graphWidth);
+            drawCurve(graphCtx, Math.cos, COLOR_COS, graphWidth);
+
+            // Hjelpelinjer fra sirkel til graf
+            const currentXOnGraph = (angle % (2 * Math.PI)) / (2 * Math.PI) * graphWidth;
+            const sinY = -sinVal * graphAmplitude;
+            const cosY = -cosVal * graphAmplitude;
+            
+            // Horisontal linje til sinus-punktet
+            graphCtx.beginPath();
+            graphCtx.moveTo(currentXOnGraph, sinY);
+            graphCtx.lineTo(-graphOrigin.x, sinY);
+            graphCtx.setLineDash([4, 4]);
+            graphCtx.strokeStyle = COLOR_SIN;
+            graphCtx.lineWidth = 1;
+            graphCtx.stroke();
+            
+            // Hjelpelinje for cosinus
+            graphCtx.beginPath();
+            graphCtx.moveTo(currentXOnGraph, cosY);
+            graphCtx.lineTo(currentXOnGraph, 0); // Viser amplitude
+            graphCtx.strokeStyle = COLOR_COS;
+            graphCtx.stroke();
+            graphCtx.setLineDash([]);
+
+
+            // Punkt på sinus-kurven
+            graphCtx.beginPath();
+            graphCtx.arc(currentXOnGraph, sinY, 6, 0, 2 * Math.PI);
+            graphCtx.fillStyle = COLOR_SIN;
+            graphCtx.fill();
+            
+            // Punkt på cosinus-kurven
+            graphCtx.beginPath();
+            graphCtx.arc(currentXOnGraph, cosY, 6, 0, 2 * Math.PI);
+            graphCtx.fillStyle = COLOR_COS;
+            graphCtx.fill();
+
+
+            graphCtx.restore();
+        }
+
+        function drawCurve(ctx, func, color, width) {
+            ctx.beginPath();
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.globalAlpha = 0.5;
+            for (let x = 0; x < width; x++) {
+                const angleOnGraph = (x / width) * 2 * Math.PI;
+                const y = -func(angleOnGraph) * graphAmplitude;
+                if (x === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            ctx.stroke();
+            ctx.globalAlpha = 1.0;
+        }
+
+        function drawAxes(ctx, width, height, isCircle) {
+            ctx.beginPath();
+            ctx.strokeStyle = COLOR_AXIS;
+            ctx.lineWidth = 1;
+
+            if (isCircle) {
+                // Horisontal akse
+                ctx.moveTo(-width / 2, 0);
+                ctx.lineTo(width / 2, 0);
+                // Vertikal akse
+                ctx.moveTo(0, -height / 2);
+                ctx.lineTo(0, height / 2);
+            } else {
+                // Horisontal akse (x-aksen)
+                ctx.moveTo(0, 0);
+                ctx.lineTo(width, 0);
+                // Vertikal akse (y-aksen)
+                ctx.moveTo(0, -height / 2);
+                ctx.lineTo(0, height / 2);
+                
+                // Merker på x-aksen
+                ctx.textAlign = 'center';
+                ctx.fillStyle = COLOR_AXIS;
+                const piPositions = [0.5, 1, 1.5, 2];
+                const piLabels = ['π/2', 'π', '3π/2', '2π'];
+                piPositions.forEach((pos, i) => {
+                    const x = (pos * Math.PI) / (2 * Math.PI) * (width - 20);
+                     ctx.fillText(piLabels[i], x, 20);
+                });
+            }
+            ctx.stroke();
+        }
+
+        // --- Animasjonsloop ---
+        function animate() {
+            if (!isPlaying) return;
+            angle += 0.01;
+            drawAll();
+            animationFrameId = requestAnimationFrame(animate);
+        }
+
+        // --- Event Listeners ---
+        slider.addEventListener('input', (e) => {
+            if (isPlaying) {
+                isPlaying = false;
+                playPauseBtn.textContent = 'Play';
+                cancelAnimationFrame(animationFrameId);
+            }
+            const degrees = parseFloat(e.target.value);
+            angle = degrees * (Math.PI / 180);
+            drawAll();
+        });
+
+        playPauseBtn.addEventListener('click', () => {
+            isPlaying = !isPlaying;
+            if (isPlaying) {
+                playPauseBtn.textContent = 'Pause';
+                animate();
+            } else {
+                playPauseBtn.textContent = 'Play';
+                cancelAnimationFrame(animationFrameId);
+            }
+        });
+
+        // --- Første tegning ved lasting av siden ---
+        window.addEventListener('load', drawAll);
+
+    </script>
+</body>
+</html>
